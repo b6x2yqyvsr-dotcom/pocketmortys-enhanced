@@ -1,0 +1,24 @@
+PocketMortys-加强版.apk
+
+  大小    315,988,853 字节
+  SHA256  eec4b0fbc7bf8ab7fb7b9c1bbd0f32dade88d2e90773c357f6883ae71b51104f
+  包名    com.conspiracyrick.pocketmortys
+  版本    2.41.0 (versionCode 602)  targetSdk 36  arm64-v8a
+  签名    v1+v2+v3（自签，和官方/社区版不同 → 必须先卸载再装）
+
+里面改了什么
+  1. lib/arm64-v8a/libil2cpp.so              10 处 arm64 指令补丁
+        过隐私协议 / 过无网络 / 跳过开场剧情 / 教程完成 / 多人解锁
+        OneTrust 死循环 / 多人暂停菜单崩溃 / 资源失败标志 x3
+  2. assets/bin/Data/Managed/Metadata/global-metadata.dat
+        服务器域名 → http://10.0.2.2:8080（等长原地替换，文件长度不变）
+  3. assets/bin/Data/globalgamemanagers
+        insecureHttpOption 0 → 2（否则 Unity 直接拒绝明文 HTTP，一个请求都不发）
+  4. res/xml/network_security_config.xml
+        加 <base-config cleartextTrafficPermitted="true">（aapt2 编译的真二进制 XML）
+  5. assets/AssetBundles/Android/**           155 个资源包 + 完整清单（version 1011）
+  6. assets/AssetBundle.dat                   31,826 字节完整清单
+  7. classes4.dex + assets/pmseed/index.txt   ★ 首启自愈（见使用说明）
+
+烧进去的服务器地址是 10.0.2.2:8080（MuMu 模拟器直连宿主机，不用建隧道）。
+真机走 Wi-Fi 需要换地址重建，命令见 3-复现构建工具/ 里的说明。

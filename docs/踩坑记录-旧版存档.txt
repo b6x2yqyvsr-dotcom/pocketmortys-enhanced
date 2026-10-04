@@ -1,0 +1,262 @@
+========================================================================
+                          踩 坑 记 录
+              逆向别人的实现之后才搞清楚的那些事
+========================================================================
+
+这份记录是「为什么这么改」的答案。每一条都是实测踩出来的，不是推测。
+
+------------------------------------------------------------------------
+坑 1：用 `/` 填充 metadata 会产生畸形 URL
+------------------------------------------------------------------------
+
+global-metadata.dat 的字符串表是定长的，改内容不能改长度。
+`http://127.0.0.1:8080` 只有 19 字节，比最短的原域名还短，必须填充。
+
+我第一版用 `/` 补齐：
+
+    原: https://newc137.bps-pmnet.com/time?a=pm_{0}
+    新: http://127.0.0.1:8080/////////time?a=pm_{0}
+                              ^^^^^^^^ 多出的斜杠
+
+结果 libcurl 发出 `GET /////////time?... HTTP/1.1`，
+而 PHP 的 parse_url() 看到以 `//` 开头的字符串会按 RFC 3986 的
+network-path reference 处理 —— 把 `time` 当成 authority(host)，
+PHP_URL_PATH 返回空串。服务器于是返回了根路径的内容（OneTrust 配置）
+而不是 `/time`。
+
+表现：客户端报「无法连接，请检查网络连接。错误：manifest.json」
+
+解决：服务器端别用 parse_url() 取路径，手动按 `?` 切分：
+
+    $uri  = $_SERVER['REQUEST_URI'] ?? '/';
+    $uri  = explode('?', $uri, 2)[0];
+    $path = ltrim(urldecode($uri), '/');
+    $path = preg_replace('#/+#', '/', $path);
+
+------------------------------------------------------------------------
+坑 2：真正的做法是【NULL 填充 + 改长度前缀】
+------------------------------------------------------------------------
+
+逆向了别人做好的、验证过能用的 metadata，发现他们是这么干的：
+
+    原: 56 https://newc137.bps-pmnet.com/time?a=pm_{0}
+        ↑↑ 长度前缀 0x56 = 86 = 43 字符 × 2（UTF-16 字节数）
+
+    新: 46 http://127.0.0.1:8080/time?a=pm_{0}\x00\x00\x00\x00\x00\x00\x00\x00
+        ↑↑ 长度前缀改成 0x46 = 70 = 35 字符 × 2，NULL 放在【末尾】
+
+两个要点：
+
+1. 用 \x00 填充。IL2CPP 编译出的是 C/C++，字符串读到第一个 \x00 就停。
+   所以运行时看到的仍然是干净的 http://127.0.0.1:8080/time?a=pm_{0}。
+
+2. **必须同时改长度前缀**。IL2CPP 的 stringLiteral 表里，每个字符串前面
+   有一个长度字节（这里是 UTF-16 字节数）。如果只改内容不改长度，
+   .NET 会按原长度把整串读出来，NULL 就成了 URL 的一部分：
+
+       http://127.0.0.1:8080\x00\x00.../time?...   → 端口非法
+
+   实测报错：UriFormatException: Invalid URI: Invalid port specified.
+
+我第一版就犯了这个错，只改内容没改长度。
+
+另外他们还顺手改了证书锁定模式：
+
+    *.conspiracyrick.com  →  127.0.0.1:8080 + NULL
+
+------------------------------------------------------------------------
+坑 3：Android 会拦截明文 HTTP
+------------------------------------------------------------------------
+
+APK 的 AndroidManifest.xml 里写着 usesCleartextTraffic="true"，
+**但同时也指定了 networkSecurityConfig**，而 Android 的规则是：
+
+    一旦存在 networkSecurityConfig，usesCleartextTraffic 就被忽略，
+    以网络配置文件里的 cleartextTrafficPermitted 为准。
+
+原版的 res/xml/network_security_config.xml 只有 <debug-overrides>，
+没有 <base-config>。targetSdkVersion = 36，默认值是 false。
+
+结果：http:// 请求被系统在 socket 层直接拒绝 —— **连接都不建立**，
+日志里没有任何 HTTP 错误，服务器也收不到请求。
+
+表现：客户端零请求，服务器端「看不到设备」。
+
+解决：加一段
+
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+
+注意：**这个文件在 APK 里是二进制 XML**。用 zip 直接替换文本 XML 会让
+APK 损坏，游戏一启动就崩：
+
+    FATAL EXCEPTION
+    Caused by: Resources$NotFoundException:
+        File res/xml/network_security_config.xml from xml type xml resource
+    Caused by: java.io.FileNotFoundException: Corrupt XML binary file
+
+必须用 apktool d / apktool b 走一遍（它会编译 XML）。
+
+------------------------------------------------------------------------
+坑 4：OneTrust SDK 拿不到配置会每帧抛空引用，永久卡加载
+------------------------------------------------------------------------
+
+    NullReferenceException
+      at OneTrust.CMPSDK.get_domainData_Groups ()
+      at OneTrustController.<UpdateSDKs>b__34_0 ()
+      at UnityMainThreadDispatcher.Update ()          ← 每帧重试
+
+那个「过隐私协议」补丁只跳过了弹窗，没管 SDK 初始化。
+
+正常做法是让服务器把 /bannersdk/v2/applicationdata 返回真实的
+116,643 字节配置（含 culture.DomainData.Groups 的 48 个分组）。
+给 `{}` 会触发这个死循环。
+
+如果那一步打不通，还有个兜底：把 OneTrustController.<UpdateSDKs>b__34_0()
+压成一条 ret。它是 void 无参方法，直接返回即可彻底止住。
+
+    文件偏移 0x1490980:  ff c3 01 d1 (sub sp,sp,#0x70)  →  c0 03 5f d6 (ret)
+
+------------------------------------------------------------------------
+坑 5：资源清单必须【原样返回】，绝对不能改写 URL
+------------------------------------------------------------------------
+
+这一条是别人 README 里明写的核心结论：
+
+    客户端本地 AssetBundle.dat 里存了一整份 manifest 副本（157 个条目），
+    启动时会拿它和服务端返回的做比对。只要 URL 不一致，就报
+    「无法连接，请检查网络连接。错误：过期资源」，然后拒绝继续。
+
+我一直在把 URL 改写成自己的地址，正是踩了这个坑。
+
+机制：**客户端自己会把清单里的域名换成它正在连的服务器。**
+服务器原样返回即可，客户端拿到后自行改写域名去下载资源。
+
+------------------------------------------------------------------------
+坑 6：manifest 的 version 字段是资源比对的开关
+------------------------------------------------------------------------
+
+客户端在 AssetBundle.dat 里存了：
+
+    LoadedManifestVersionKey = 1011      (LoadedManifestVersion)
+    LoadedManifestStrKey     = 那份 JSON
+
+APK 里还有：
+
+    AssetBundleRequiredManifestVersionKey (assetBundleRequiredManifestVersion)
+    serverManifestVersion
+
+三者必须一致，否则报「过期资源」。
+
+实测：
+  · 服务器给 1011（和缓存一致）→ 客户端认为无需更新，但 required 是 1012
+    → 报「过期资源」
+  · 服务器给 1012、缓存是 1011 → 客户端清空整个 UnityCache（311 个文件
+    全删），要重新下载全部 310 个资源包
+  · 服务器给 1012、缓存也改成 1012 → 通过版本检查，然后逐个比 crc，
+    发现 spdata 变了 → 单独下载 spdata
+
+------------------------------------------------------------------------
+坑 7：manifest 的 crc 不是文件的 CRC32
+------------------------------------------------------------------------
+
+Unity 的 AssetBundle manifest 里那个 `crc` 字段是构建时算的，
+不是文件的 zlib.crc32。实测：
+
+    官方 spdata 文件:  zlib.crc32 = 3,346,952,902
+    manifest 里声明:              56,704,221
+
+差得离谱。所以不能拿普通 CRC32 去核对。
+
+如果不想让客户端下载某个包，得把 manifest 里那个包的 crc/version
+改回客户端缓存里的值，让客户端认为它没变。
+
+------------------------------------------------------------------------
+坑 8：AssetBundle.dat 的二进制结构
+------------------------------------------------------------------------
+
+它是 .NET BinaryFormatter 格式。实测结构（31,826 字节的版本）：
+
+    [0]    00                     Header
+    [1]    01 00 00 00            rootId = 1
+    [5]    ff ff ff ff            headerId = -1
+    [9]    01 00 00 00 00 00 00 00  ver 1.0
+    [17]   0c                     BinaryLibrary
+    [18]   02 00 00 00            libraryId = 2
+    [22]   46                     "Assembly-CSharp, ..." 长度 70
+    [93]   05                     ClassWithMembersAndTypes
+    [94]   01 00 00 00            classId = 1
+    [98]   13                     "AssetBundleSaveData" 长度 19
+    ...
+    成员: VersionIDKey, LoadedManifestVersionKey,
+          LoadedManifestStrKey, ForcePullOnNextLoadKey
+
+    值区 @ 209:
+      08                        record 类型
+      01 02 00 00 00            classId
+      06 00 00 00
+      f3 03 00 00               ★ LoadedManifestVersion = 1011  @ 219
+      06 03 00 00 00
+      e9 f6 01                  ★ JSON 长度（7-bit 编码）= 31593  @ 228
+      7b 22 ...                 ★ manifest JSON 开始            @ 231
+      00 0b                     MessageEnd
+
+改版本号 / 换 JSON 要动这三个位置：219（版本）、228（长度前缀）、
+231（JSON 内容）。长度前缀是 7-bit 变长编码，只要新旧长度的编码
+字节数一样（29733 和 31593 都是 3 字节）就不影响后续偏移。
+
+------------------------------------------------------------------------
+坑 9：/tmp 在这台机器上会被清理
+------------------------------------------------------------------------
+
+服务器放在 /tmp/pm-clean 时被系统清理过好几次，表现为「服务器怎么没了」。
+所有东西都要放工作区，不要放 /tmp。
+
+------------------------------------------------------------------------
+坑 10：adb reverse 在 adb root 之后会失效
+------------------------------------------------------------------------
+
+    adb root          → 隧道被清掉
+    adb reverse tcp:8080 tcp:8080    ← 必须重新执行
+
+另外 `adb push` 进去的文件属主是 shell，游戏可能读不到。要用 chcon：
+
+    adb shell "chmod -R 777 $BASE"
+    adb shell "chcon -R u:object_r:media_rw_data_file:s0:c47,c256,c512,c768 $BASE"
+
+用 restorecon 会重置成默认值，游戏就读不到了。
+
+ONETRUST / ONETRUST_SDK 目录【不要】从别处拷进去，会让同意状态回滚导致黑屏。
+
+========================================================================
+                        当 前 进 度
+========================================================================
+
+已解决：
+  ✓ 明文 HTTP 被拦（network_security_config）
+  ✓ OneTrust 每帧空引用死循环（补丁 + 服务器端点）
+  ✓ 用 / 填充产生的畸形 URL（改 NULL 填充 + 服务器不用 parse_url）
+  ✓ 资源清单被改写导致「过期资源」（改为原样返回）
+  ✓ AssetBundle.dat 的版本号（改成 1012）
+
+游戏现在能：
+  ✓ 通过版本检查，不报「过期资源」
+  ✓ 加载出真实游戏画面（截图 2.2 MB 级别，是完整的游戏场景）
+  ✓ 不再卡在 OneTrust 死循环
+
+还没完全通过：
+  ✗ 最终仍报「无法连接，请检查网络连接。错误：manifest.json」
+
+可能的剩余原因（未验证）：
+  · MuMu 模拟器的网络栈对 127.0.0.1 有特殊处理 —— 建议换真机试
+  · PHP 内置服务器的某些行为 —— 建议换 Apache 或最简 Python http.server
+  · adb reverse 的隧道在游戏进程视角下不完全可靠
+
+建议的下一步排查：
+  1. 换真机（排除模拟器）
+  2. 服务器换 Apache（社区作者原本要求的方式，.htaccess 原生生效）
+  3. 用 tcpdump 抓手机侧，确认 HTTP 请求到底有没有发出来

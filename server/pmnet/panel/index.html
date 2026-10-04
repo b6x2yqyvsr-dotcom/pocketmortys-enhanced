@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pocket Mortys 私服 · 控制台</title>
+<link rel="stylesheet" href="/admin/style.css">
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">PM</div>
+      <div class="brand-text">
+        <b>Pocket Mortys</b>
+        <span>私服控制台</span>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <a class="nav-item active" data-page="overview"><i>◈</i><span>概览</span></a>
+      <a class="nav-item" data-page="devices"><i>⌘</i><span>设备</span></a>
+      <a class="nav-item" data-page="players"><i>◉</i><span>玩家</span></a>
+      <a class="nav-item" data-page="rooms"><i>▦</i><span>房间</span></a>
+      <a class="nav-item" data-page="events"><i>≡</i><span>事件流</span></a>
+      <a class="nav-item" data-page="settings"><i>⚙</i><span>设置</span></a>
+      <a class="nav-item" data-page="system"><i>▤</i><span>系统</span></a>
+      <a class="nav-item" data-page="console"><i>▥</i><span>请求日志</span></a>
+    </nav>
+
+    <div class="sidebar-foot">
+      <div class="status-dot" id="conn-dot"></div>
+      <span id="conn-text">连接中…</span>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="announce" id="announce" hidden></div>
+
+    <header class="topbar">
+      <h1 id="page-title">概览</h1>
+      <div class="topbar-right">
+        <span class="chip" id="chip-host">—</span>
+        <span class="chip" id="chip-online">—</span>
+        <span class="chip" id="chip-uptime">—</span>
+        <button class="btn" id="btn-refresh">刷新</button>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <!-- 概览 -->
+      <section class="page active" id="page-overview">
+        <div class="cards" id="stat-cards"></div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2>作弊 / 玩法开关</h2>
+            <span class="hint">到「设置」页可以逐项调整</span>
+          </div>
+          <div class="cheat-grid" id="cheat-grid"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h2>连接的设备</h2>
+            <span class="hint" id="dev-mini-hint"></span></div>
+          <div id="dev-mini"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h2>快速操作</h2></div>
+          <div class="actions">
+            <button class="btn primary" id="btn-seed">一键生成房间内容</button>
+            <span class="hint">给 7 个世界填充野生莫蒂 / 机器人 / 拾取物</span>
+          </div>
+          <pre class="result" id="seed-result"></pre>
+        </div>
+      </section>
+
+      <!-- 设备 -->
+      <section class="page" id="page-devices">
+        <div class="cards" id="dev-cards"></div>
+        <div class="panel">
+          <div class="panel-head">
+            <h2>连接的设备 / 客户端</h2>
+            <span class="hint">按 (IP + User-Agent) 分组 —— 模拟器上游戏 / OneTrust / 面板都来自 127.0.0.1</span>
+          </div>
+          <div class="table-wrap"><table id="dev-table"></table></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>活动轨迹</h2>
+            <span class="hint" id="dev-trace-hint">点上面表格的一行查看</span></div>
+          <pre class="console" id="dev-trace">（未选择设备）</pre>
+        </div>
+      </section>
+
+      <!-- 玩家 -->
+      <section class="page" id="page-players">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>玩家列表</h2>
+            <div class="head-tools">
+              <input class="input" id="player-search" placeholder="搜索用户名或 player_id…">
+              <span class="hint" id="player-count"></span>
+            </div>
+          </div>
+          <div class="table-wrap"><table id="player-table"></table></div>
+        </div>
+      </section>
+
+      <!-- 房间 -->
+      <section class="page" id="page-rooms">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>房间生成</h2>
+            <span class="hint">数量改完对新生成的房间生效</span>
+          </div>
+          <div class="actions">
+            <label class="fld"><span>拾取物</span>
+              <input class="input num" id="seed-pickups" type="number" min="0" max="12" value="3"></label>
+            <label class="fld"><span>野生莫蒂</span>
+              <input class="input num" id="seed-wilds" type="number" min="0" max="12" value="5"></label>
+            <label class="fld"><span>机器人</span>
+              <input class="input num" id="seed-bots" type="number" min="0" max="12" value="4"></label>
+            <button class="btn primary" id="btn-seed-custom">生成</button>
+            <button class="btn" id="btn-seed-force">清空并重建</button>
+          </div>
+          <pre class="result" id="seed-custom-result"></pre>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>房间列表</h2><span class="hint" id="room-count"></span></div>
+          <div id="room-list" class="room-list"></div>
+        </div>
+      </section>
+
+      <!-- 事件 -->
+      <section class="page" id="page-events">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>事件流 (event_queue)</h2>
+            <div class="head-tools"><span class="hint" id="event-count"></span></div>
+          </div>
+          <div class="table-wrap"><table id="event-table"></table></div>
+        </div>
+      </section>
+
+      <!-- 设置 -->
+      <section class="page" id="page-settings">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>服务器设置</h2>
+            <div class="head-tools">
+              <span class="hint">保存到数据库，重启后保留</span>
+              <button class="btn primary" id="btn-save-settings">保存</button>
+            </div>
+          </div>
+          <div id="settings-form" class="settings"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>保存结果</h2></div>
+          <pre class="result" id="settings-result"></pre>
+        </div>
+      </section>
+
+      <!-- 系统 -->
+      <section class="page" id="page-system">
+        <div class="panel">
+          <div class="panel-head"><h2>数据库表</h2><span class="hint" id="sys-hint"></span></div>
+          <div class="table-wrap"><table id="sys-table"></table></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>运行时配置</h2></div>
+          <pre class="code" id="config-view"></pre>
+        </div>
+      </section>
+
+      <!-- 日志 -->
+      <section class="page" id="page-console">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>请求日志</h2>
+            <div class="head-tools">
+              <label class="switch"><input type="checkbox" id="auto-tail" checked><span>自动刷新</span></label>
+              <span class="hint" id="console-src"></span>
+            </div>
+          </div>
+          <pre class="console" id="console-view"></pre>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+<script src="/admin/app.js"></script>
+</body>
+</html>

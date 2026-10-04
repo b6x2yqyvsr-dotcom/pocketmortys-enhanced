@@ -1,0 +1,23 @@
+# 游戏本体资源与构建产物：绝不入库
+*.apk
+*.apk.idsig
+*.assetbundle
+*.so
+*.dat
+build/
+dist/
+community-pure/
+client/
+client-data/
+client-patch/
+官方*/
+# 运行时
+__pycache__/
+*.pyc
+logs/
+recordings/
+data/pmnet.db*
+data/sources/
+data/gamedata/
+.venv/
+.DS_Store
