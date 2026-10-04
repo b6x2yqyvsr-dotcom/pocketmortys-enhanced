@@ -1,13 +1,47 @@
 # Pocket Mortys 加强版 · 私服服务端 + 客户端补丁工具
 
-已停服的安卓游戏 **《口袋莫蒂》Pocket Mortys**（Adult Swim / Big Pixel Studios）
-的私服服务端，以及把官方客户端改到能连自建服务器的补丁工具链。
+已停服的安卓游戏 **《口袋莫蒂》Pocket Mortys** 的私服服务端，以及把官方客户端
+改到能连自建服务器的补丁工具链。已完成端到端实测：干净安装 → 启动 →
+自动铺好资源 → 进主菜单，**全程不需要 adb 推任何文件**。
 
-本项目属于**游戏保存（game preservation）**性质，用于让已购游戏在官方服务终止后
-仍可运行，仅供个人与局域网使用。
+> **本仓库不分发游戏本体资源，也不提供预编译 APK。**
+> 你需要自备官方 APK —— 见下面「三步拿到能玩的 APK」。
 
-> **本项目不分发游戏本体资源**，也不提供打过补丁的 APK。
-> 你需要自备官方 APK（下文说明来源）。
+---
+
+## 🚀 三步拿到能玩的 APK
+
+**第一步 · 下载工具**
+到 [Releases](https://github.com/b6x2yqyvsr-dotcom/pocketmortys-enhanced/releases/latest)
+下载 `pocketmortys-enhanced-tools-*.zip`，解压。
+
+**第二步 · 准备官方 APK**
+需要 `Pocket.Mortys.V2.41.0.apk`（Unity 2022.3.62f2 / IL2CPP metadata v31，
+`libil2cpp.so` sha256 `ff773be7…c8e4326`，52,190,824 字节）。其它版本偏移对不上，会直接报错。
+
+**第三步 · 双击生成**
+双击 `一键生成APK.command`，填两个空：
+
+```
+官方 APK 的路径:  /path/to/Pocket.Mortys.V2.41.0.apk
+服务器地址:       192.168.1.100      ← 设备能访问到的地址
+```
+
+约 2 分钟后得到 `PocketMortys-加强版.apk`。脚本会逐项复验（10 处 .so 补丁、
+metadata 地址、明文 HTTP 放行、资源清单版本……），任何一项不过就以非 0 退出。
+
+装到设备上（签名与官方不同，必须先卸载）：
+
+```bash
+adb uninstall com.conspiracyrick.pocketmortys
+adb install -g PocketMortys-加强版.apk
+```
+
+**首次启动会慢约 1 分钟**——APK 内置的引导代码正在把 155 个资源包铺进
+`files/UnityCache/`（179 MB）。别杀进程，之后每次秒进。
+
+> 需要 `apktool`、JDK、Android SDK build-tools（`aapt2`/`zipalign`/`apksigner`）。
+> macOS: `brew install apktool openjdk`。
 
 ---
 
