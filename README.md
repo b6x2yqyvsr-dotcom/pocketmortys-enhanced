@@ -16,8 +16,21 @@
 下载 `pocketmortys-enhanced-tools-*.zip`，解压。
 
 **第二步 · 准备官方 APK**
-需要 `Pocket.Mortys.V2.41.0.apk`（Unity 2022.3.62f2 / IL2CPP metadata v31，
-`libil2cpp.so` sha256 `ff773be7…c8e4326`，52,190,824 字节）。其它版本偏移对不上，会直接报错。
+
+直接下载（公开来源，下载量 10 万+，2.41.0 是最后一个版本）：
+
+**<https://github.com/Project-Pocket-Mortys/.github/releases/download/V2.41.0/Pocket.Mortys.V2.41.0.apk>**
+
+    Pocket.Mortys.V2.41.0.apk
+      174,924,654 字节
+      sha256 c6efa81a0d50d8dd471cefbd9fa5b8ea3b9491b3800aa70ed97a28ecdfa98e2e
+
+下完对一下大小和 sha256，对不上就是下坏了（或者被中间人换了），别往下走。
+
+版本要求：Unity 2022.3.62f2 / IL2CPP metadata v31，其中
+`lib/arm64-v8a/libil2cpp.so` 必须是 `52,190,824` 字节、sha256
+`ff773be7d3718ee307f6342358268748e8fa2487460e7b3857715478cb8e4326`。
+**其它版本偏移对不上**，脚本会在第一步就报错停下，不会打出半成品。
 
 **第三步 · 双击生成**
 双击 `一键生成APK.command`，填两个空：
