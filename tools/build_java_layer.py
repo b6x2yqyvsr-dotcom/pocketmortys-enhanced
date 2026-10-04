@@ -111,12 +111,35 @@ CALL = ANCHOR + ('\n    # 首启自愈（见 com.pmseed.SeedApplication）\n'
                  '    invoke-static {p0}, Lcom/pmseed/SeedApplication;->seed(Landroid/content/Context;)V\n')
 
 
+
+def run(argv, **kw):
+    """调用外部程序。Windows 上 .bat/.cmd 必须经 cmd /c，否则 CreateProcess 起不来。"""
+    argv = [str(a) for a in argv]
+    if os.name == "nt" and argv and argv[0].lower().endswith((".bat", ".cmd")):
+        argv = ["cmd", "/c", *argv]
+    return subprocess.run(argv, **kw)
+
+
+def tool(bt, name):
+    """兼容 Windows 的 .exe / .bat 后缀。"""
+    import pathlib as _p
+    bt = _p.Path(bt)
+    for suffix in (".exe", ".bat", ".cmd", ""):
+        cand = bt / (name + suffix)
+        if cand.is_file():
+            return str(cand)
+    return str(bt / name)
+
+
 def sdk_paths():
     sdk = pathlib.Path(os.environ.get("ANDROID_HOME") or
                        pathlib.Path.home() / "Library" / "Android" / "sdk")
     bt = sorted((sdk / "build-tools").glob("*"))[-1]
     jar = sorted((sdk / "platforms").glob("android-*/android.jar"))[-1]
     return bt, jar
+
+
+APKTOOL = shutil.which("apktool") or shutil.which("apktool.bat") or "apktool"
 
 
 def main() -> int:
@@ -134,7 +157,7 @@ def main() -> int:
 
     # 1. 折包
     if not (a.work / "AndroidManifest.xml").is_file():
-        subprocess.run(["apktool", "d", "-f", "-o", str(a.work), str(a.base)], check=True)
+        run([APKTOOL, "d", "-f", "-o", str(a.work), str(a.base)], check=True)
 
     # 2. 插入调用
     target = a.work / "smali_classes2/com/unity3d/player/UnityPlayerActivity.smali"
@@ -155,10 +178,10 @@ def main() -> int:
         td = pathlib.Path(td)
         (td / "src/com/pmseed").mkdir(parents=True)
         (td / "src/com/pmseed/SeedApplication.java").write_text(JAVA_SRC, encoding="utf-8")
-        subprocess.run([javac, "--release", "11", "-nowarn", "-cp", str(android_jar),
+        run([javac, "--release", "11", "-nowarn", "-cp", str(android_jar),
                         "-d", str(td / "cls"),
                         str(td / "src/com/pmseed/SeedApplication.java")], check=True)
-        subprocess.run([str(bt / "d8"), "--min-api", "28", "--lib", str(android_jar),
+        run([tool(bt, "d8"), "--min-api", "28", "--lib", str(android_jar),
                         "--output", str(td / "dex"),
                         str(td / "cls/com/pmseed/SeedApplication.class")], check=True)
         dex_out = a.out.parent / "classes4.dex"
@@ -167,7 +190,7 @@ def main() -> int:
         print(f"  已生成 {dex_out}")
 
     # 4. 打包（只为了拿到编好的 AndroidManifest.xml）
-    subprocess.run(["apktool", "b", str(a.work), "-o", str(a.out)], check=True)
+    run([APKTOOL, "b", str(a.work), "-o", str(a.out)], check=True)
     print(f"  已生成 {a.out}")
 
     # 5. 生成 index.txt

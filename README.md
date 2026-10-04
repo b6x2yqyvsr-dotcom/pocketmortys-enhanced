@@ -33,7 +33,20 @@
 **其它版本偏移对不上**，脚本会在第一步就报错停下，不会打出半成品。
 
 **第三步 · 双击生成**
-双击 `一键生成APK.command`，填两个空：
+
+| 系统 | 双击这个 |
+|---|---|
+| macOS | `一键生成APK.command` |
+| Windows | `一键生成APK.bat` |
+| Linux / 想用命令行 | `python3 tools/make_apk.py` |
+
+它会先用中文问你两个问题（CLI 也可以直接传参）：
+
+```bash
+python3 tools/make_apk.py --base 官方.apk --host 192.168.1.100 -o 输出.apk
+python3 tools/make_apk.py --check      # 只体检环境，不生成
+```
+
 
 ```
 官方 APK 的路径:  /path/to/Pocket.Mortys.V2.41.0.apk
@@ -53,8 +66,19 @@ adb install -g PocketMortys-加强版.apk
 **首次启动会慢约 1 分钟**——APK 内置的引导代码正在把 155 个资源包铺进
 `files/UnityCache/`（179 MB）。别杀进程，之后每次秒进。
 
-> 需要 `apktool`、JDK、Android SDK build-tools（`aapt2`/`zipalign`/`apksigner`）。
-> macOS: `brew install apktool openjdk`。
+**前置依赖**（缺失时脚本会明确告诉你缺哪个）
+
+| | |
+|---|---|
+| 通用 | JDK 17+、apktool、Android SDK 的 `build-tools` 与 `platforms` |
+| macOS | `brew install apktool openjdk`，Android SDK 用 Android Studio 或 cmdline-tools |
+| Windows | [apktool](https://apktool.org/) 的 `apktool.bat`、JDK、Android SDK；Python 安装时勾选 *Add python.exe to PATH* |
+
+首次运行前可以先体检：
+
+```bash
+python3 tools/make_apk.py --check
+```
 
 ---
 

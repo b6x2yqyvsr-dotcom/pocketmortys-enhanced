@@ -96,6 +96,30 @@ ANDROID_JAR_CANDIDATES = sorted(
 ) if (Path.home() / "Library" / "Android" / "sdk" / "platforms").is_dir() else []
 
 
+
+
+def run(argv, **kw):
+    """调用外部程序。Windows 上 .bat/.cmd 必须经 cmd /c，否则 CreateProcess 起不来。"""
+    argv = [str(a) for a in argv]
+    if os.name == "nt" and argv and argv[0].lower().endswith((".bat", ".cmd")):
+        argv = ["cmd", "/c", *argv]
+    return subprocess.run(argv, **kw)
+
+
+def tool(bt: Path, name: str) -> str:
+    """在 build-tools 目录里找可执行文件，兼容 Windows 的 .exe / .bat。
+
+    Windows 上 build-tools 里是 ``aapt2.exe`` / ``d8.bat`` / ``zipalign.exe`` /
+    ``apksigner.bat``，Linux/macOS 上则是无后缀的。硬编码无后缀名在 Windows
+    上会直接 FileNotFoundError，所以统一走这里。
+    """
+    for suffix in (".exe", ".bat", ".cmd", ""):
+        cand = bt / (name + suffix)
+        if cand.is_file():
+            return str(cand)
+    return str(bt / name)
+
+
 def build_tools() -> Path:
     for p in BT_CANDIDATES:
         if (p / "aapt2").is_file() and (p / "apksigner").is_file():
@@ -215,8 +239,8 @@ def dump_binary_xml(nsc_blob: bytes, manifest_blob: bytes) -> str:
         with zipfile.ZipFile(probe, "w") as zf:
             zf.writestr("AndroidManifest.xml", manifest_blob)
             zf.writestr("res/xml/network_security_config.xml", nsc_blob)
-        res = subprocess.run(
-            [str(bt / "aapt2"), "dump", "xmltree", "--file",
+        res = run(
+            [tool(bt, "aapt2"), "dump", "xmltree", "--file",
              "res/xml/network_security_config.xml", str(probe)],
             capture_output=True, text=True)
         return res.stdout or res.stderr
@@ -242,9 +266,9 @@ def compile_nsc(out_dir: Path) -> Path:
         (work / "res" / "xml" / "network_security_config.xml").write_text(
             NSC_XML, encoding="utf-8")
         (work / "AndroidManifest.xml").write_text(_MANIFEST_XML, encoding="utf-8")
-        subprocess.run([str(bt / "aapt2"), "compile", "--dir", "res",
+        run([tool(bt, "aapt2"), "compile", "--dir", "res",
                         "-o", "compiled.zip"], cwd=work, check=True)
-        subprocess.run([str(bt / "aapt2"), "link", "-o", "out.apk",
+        run([tool(bt, "aapt2"), "link", "-o", "out.apk",
                         "-I", str(android_jar()), "--manifest", "AndroidManifest.xml",
                         "compiled.zip"], cwd=work, check=True)
         with zipfile.ZipFile(work / "out.apk") as zf:
@@ -315,11 +339,11 @@ def repack(src: Path, dst: Path, replacements: dict[str, Path],
 def align_and_sign(apk: Path) -> None:
     bt = build_tools()
     aligned = apk.with_suffix(".aligned.apk")
-    subprocess.run([str(bt / "zipalign"), "-f", "-p", "4", str(apk), str(aligned)],
+    run([tool(bt, "zipalign"), "-f", "-p", "4", str(apk), str(aligned)],
                    check=True)
     shutil.move(str(aligned), str(apk))
-    subprocess.run([
-        str(bt / "apksigner"), "sign",
+    run([
+        tool(bt, "apksigner"), "sign",
         "--ks", str(KEYSTORE),
         "--ks-pass", f"pass:{KS_PASS}",
         "--key-pass", f"pass:{KS_PASS}",
@@ -429,7 +453,7 @@ def verify(apk: Path) -> bool:
               f"   签名 {'✅ v1/v2' if signed else '—'}")
         ok &= stored
 
-    res = subprocess.run([str(bt / "apksigner"), "verify", "--print-certs", str(apk)],
+    res = run([tool(bt, "apksigner"), "verify", "--print-certs", str(apk)],
                          capture_output=True, text=True)
     print(f"     apksigner verify    {'✅ 通过' if res.returncode == 0 else '❌ 失败'}")
     ok &= res.returncode == 0
