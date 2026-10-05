@@ -326,6 +326,8 @@ def main() -> int:
     ap.add_argument("--no-launch", action="store_true")
     ap.add_argument("--push-cache", action="store_true",
                     help="把 UnityCache 与 AssetBundle.dat 推到设备（精简版建议加）")
+    ap.add_argument("--reverse", action="store_true",
+                    help="强制建立 adb reverse 隧道（默认不建：APK 自己会应答开机探测）")
     ap.add_argument("--no-consent", action="store_true",
                     help="不要自动点掉首启的条款弹窗")
     ap.add_argument("--status", action="store_true", help="只报告状态，不做任何事")
@@ -412,7 +414,9 @@ def main() -> int:
 
     # ── 3. 隧道 ──
     step(3, total, "建立 adb reverse 隧道（设备的 127.0.0.1:端口 → 本机）")
-    if public_host in ("127.0.0.1", "localhost"):
+    # NO_REVERSE_NOTE: 现在的 APK 内置了开机应答（绑设备内 127.0.0.1:port），
+    # 再建 adb reverse 会占住同一个端口、把它顶掉，所以默认不建。
+    if args.reverse and public_host in ("127.0.0.1", "localhost"):
         adb.raw("-s", serial, "reverse", f"tcp:{args.port}", f"tcp:{args.port}")
         listed = adb.raw("-s", serial, "reverse", "--list").stdout
         ok = f"tcp:{args.port}" in listed
